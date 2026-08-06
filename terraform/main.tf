@@ -2,12 +2,12 @@
 # After heal runs terraform fmt, indentation/spacing should normalize.
 
 locals {
-  example_name = "poc-fmt-test"
-  tags = {
-    Environment = "dev"
-    Project     = "agentic-ai-poc"
-    Owner       = "terraform-team"
-  }
+            example_name = "poc-fmt-test"
+            tags = {
+              Environment = "dev"
+              Project     = "agentic-ai-poc"
+              Owner       = "terraform-team"
+            }
 }
 
 variable "region" {
