@@ -73,6 +73,24 @@ jobs:
               --output claude-fmt-analysis.md
           fi
 
+      - name: Show Claude analysis
+        run: |
+          echo "=========================================="
+          echo " Claude advisor output"
+          echo "=========================================="
+          cat claude-fmt-analysis.md
+          echo "=========================================="
+
+          {
+            echo "## Claude advisor analysis"
+            echo
+            echo "Model: \`${ANTHROPIC_MODEL:-claude-haiku-4-5-20251001}\`"
+            echo
+            cat claude-fmt-analysis.md
+          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          ANTHROPIC_MODEL: claude-haiku-4-5-20251001
+
       - name: Run terraform fmt (apply formatting only)
         run: |
           echo "Auto-healing Terraform formatting..."
