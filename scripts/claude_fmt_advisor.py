@@ -56,7 +56,7 @@ def call_claude(drift: str) -> str:
 
     client = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
-        model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+        model=os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
         max_tokens=1024,
         system=SYSTEM,
         messages=[{"role": "user", "content": build_user_prompt(drift)}],
