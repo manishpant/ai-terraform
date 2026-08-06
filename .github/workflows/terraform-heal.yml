@@ -1,0 +1,120 @@
+name: Terraform Auto-Heal Formatting
+
+on:
+  workflow_run:
+    workflows:
+      - Terraform Detect Formatting Drift
+    types:
+      - completed
+
+jobs:
+  heal:
+    name: Auto-Heal Terraform Formatting
+    runs-on: ubuntu-latest
+    # Heal any branch where detect failed; skip auto-heal branches to avoid loops.
+    if: |
+      github.event.workflow_run.conclusion == 'failure' &&
+      !startsWith(github.event.workflow_run.head_branch, 'terraform-fmt-auto-heal')
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: latest
+
+      - name: Capture terraform fmt drift
+        id: drift
+        run: |
+          set +e
+          terraform fmt -check -diff -recursive > fmt-drift.txt 2>&1
+          status=$?
+          set -e
+          echo "fmt -check exit code: ${status}"
+          if [ ! -s fmt-drift.txt ]; then
+            echo "No drift text captured; listing .tf files for advisor context." > fmt-drift.txt
+            find . -name '*.tf' -print >> fmt-drift.txt || true
+          fi
+          echo "----- drift preview (truncated) -----"
+          head -c 2000 fmt-drift.txt || true
+          echo
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install anthropic SDK
+        run: pip install --quiet 'anthropic>=0.40.0'
+
+      - name: Claude advisor analysis
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "${ANTHROPIC_API_KEY}" ]; then
+            echo "ANTHROPIC_API_KEY secret is missing; write fallback analysis."
+            cat > claude-fmt-analysis.md <<'EOF'
+          ## Claude advisor unavailable
+
+          `ANTHROPIC_API_KEY` is not configured in repository secrets.
+          Heal will still apply `terraform fmt` only and open this PR for human review.
+          EOF
+          else
+            python scripts/claude_fmt_advisor.py \
+              --input fmt-drift.txt \
+              --output claude-fmt-analysis.md
+          fi
+
+      - name: Run terraform fmt (apply formatting only)
+        run: |
+          echo "Auto-healing Terraform formatting..."
+          terraform fmt -recursive
+          echo "Formatting complete."
+
+      - name: Verify formatting
+        run: terraform fmt -check -recursive
+
+      - name: Build PR body
+        run: |
+          {
+            echo "## Auto-Heal: Terraform Formatting"
+            echo
+            echo "This PR was opened by the Terraform formatting auto-heal pipeline."
+            echo
+            echo "**Fix applied:** \`terraform fmt\` only (indentation / whitespace)."
+            echo "No resource logic, IAM, security rules, or topology changes."
+            echo
+            echo "**Claude role:** AI advisor — analysis of the fmt failure below."
+            echo "Claude does not merge and does not run \`terraform apply\`."
+            echo
+            echo "### Claude analysis"
+            echo
+            cat claude-fmt-analysis.md
+            echo
+            echo "### Next steps"
+            echo
+            echo "1. Review the diff — only formatting should change."
+            echo "2. Approve the PR (≥1 review if branch protection requires it)."
+            echo "3. Merge manually in the GitHub UI (no auto-merge)."
+          } > pr-body.md
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: 'chore: terraform fmt'
+          title: 'Auto-heal: Terraform formatting'
+          body-path: pr-body.md
+          # Target the branch that failed detect (any branch, not only main).
+          base: ${{ github.event.workflow_run.head_branch }}
+          branch: terraform-fmt-auto-heal-${{ github.event.workflow_run.head_branch }}
+          delete-branch: true
+          labels: 'auto-heal,terraform'
+          add-paths: |
+            **/*.tf

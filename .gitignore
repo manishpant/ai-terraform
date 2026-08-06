@@ -1,0 +1,15 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+docs/generated/*
+!docs/generated/examples/
+!docs/generated/examples/**
+rag_index/
+*.faiss
+*.pkl
+.terraform/
+*.tfstate*
